@@ -10,6 +10,44 @@ interface InstallOptions {
   saveDev?: boolean;
 }
 
+async function loadDependencies(
+  packageManager: PackageManager,
+  limit: ReturnType<typeof pLimit>,
+  cache: Cache,
+  resolver: DependencyResolver,
+  lockfileManager: LockfileManager
+) {
+  const dependencies = await packageManager.getAllDependencies();
+  return Promise.all(
+    dependencies.map((dep) =>
+      limit(() =>
+        packageManager.installPackage(dep.name, {
+          cache,
+          resolver,
+          lockfileManager,
+          isDev: dep.isDev,
+        })
+      )
+    )
+  );
+}
+
+async function installSinglePackage(
+  packageName: string,
+  packageManager: PackageManager,
+  cache: Cache,
+  resolver: DependencyResolver,
+  lockfileManager: LockfileManager,
+  isDev?: boolean
+) {
+  await packageManager.installPackage(packageName, {
+    cache,
+    resolver,
+    lockfileManager,
+    isDev,
+  });
+}
+
 export async function install(
   packageName?: string,
   options: InstallOptions = {}
@@ -23,41 +61,30 @@ export async function install(
     const packageManager = new PackageManager();
     const lockfileManager = new LockfileManager();
 
-    // Load existing lockfile
     await lockfileManager.load();
 
     if (packageName) {
-      // Install single package
       spinner.text = `Installing ${packageName}...`;
-      await packageManager.installPackage(packageName, {
+      await installSinglePackage(
+        packageName,
+        packageManager,
         cache,
         resolver,
         lockfileManager,
-        isDev: options.saveDev,
-      });
+        options.saveDev
+      );
     } else {
-      // Install all dependencies from package.json
-      const dependencies = await packageManager.getAllDependencies();
-
       spinner.text = "Installing dependencies...";
-
-      await Promise.all(
-        dependencies.map((dep) =>
-          limit(() =>
-            packageManager.installPackage(dep.name, {
-              cache,
-              resolver,
-              lockfileManager,
-              isDev: dep.isDev,
-            })
-          )
-        )
+      await loadDependencies(
+        packageManager,
+        limit,
+        cache,
+        resolver,
+        lockfileManager
       );
     }
 
-    // Save updated lockfile
     await lockfileManager.save();
-
     spinner.succeed(chalk.green("Dependencies installed successfully!"));
   } catch (error: unknown) {
     const errorMessage =
