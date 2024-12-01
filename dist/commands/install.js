@@ -5,6 +5,23 @@ import { Cache } from "../utils/cache.js";
 import { DependencyResolver } from "../utils/dependency-resolver.js";
 import { PackageManager } from "../utils/package-manager.js";
 import { LockfileManager } from "../utils/lockfile-manager.js";
+async function loadDependencies(packageManager, limit, cache, resolver, lockfileManager) {
+    const dependencies = await packageManager.getAllDependencies();
+    return Promise.all(dependencies.map((dep) => limit(() => packageManager.installPackage(dep.name, {
+        cache,
+        resolver,
+        lockfileManager,
+        isDev: dep.isDev,
+    }))));
+}
+async function installSinglePackage(packageName, packageManager, cache, resolver, lockfileManager, isDev) {
+    await packageManager.installPackage(packageName, {
+        cache,
+        resolver,
+        lockfileManager,
+        isDev,
+    });
+}
 export async function install(packageName, options = {}) {
     const spinner = ora("Resolving dependencies...").start();
     const limit = pLimit(8); // Parallel installation limit
@@ -13,30 +30,15 @@ export async function install(packageName, options = {}) {
         const resolver = new DependencyResolver();
         const packageManager = new PackageManager();
         const lockfileManager = new LockfileManager();
-        // Load existing lockfile
         await lockfileManager.load();
         if (packageName) {
-            // Install single package
             spinner.text = `Installing ${packageName}...`;
-            await packageManager.installPackage(packageName, {
-                cache,
-                resolver,
-                lockfileManager,
-                isDev: options.saveDev,
-            });
+            await installSinglePackage(packageName, packageManager, cache, resolver, lockfileManager, options.saveDev);
         }
         else {
-            // Install all dependencies from package.json
-            const dependencies = await packageManager.getAllDependencies();
             spinner.text = "Installing dependencies...";
-            await Promise.all(dependencies.map((dep) => limit(() => packageManager.installPackage(dep.name, {
-                cache,
-                resolver,
-                lockfileManager,
-                isDev: dep.isDev,
-            }))));
+            await loadDependencies(packageManager, limit, cache, resolver, lockfileManager);
         }
-        // Save updated lockfile
         await lockfileManager.save();
         spinner.succeed(chalk.green("Dependencies installed successfully!"));
     }
