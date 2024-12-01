@@ -2,7 +2,6 @@ import chalk from "chalk";
 import inquirer from "inquirer";
 import { writeFile } from "fs/promises";
 import { join } from "path";
-import boxen from "boxen";
 import { createSpinner } from "../utils/spinner.js";
 
 export async function init(projectName?: string): Promise<void> {
